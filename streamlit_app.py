@@ -12,7 +12,7 @@ import dalex as dx
 from sklearn.model_selection import train_test_split, RandomizedSearchCV, StratifiedKFold
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
+from imblearn.pipeline import Pipeline
 from sklearn.metrics import (
     classification_report, confusion_matrix, accuracy_score,
     precision_score, recall_score, f1_score, roc_auc_score,
@@ -24,7 +24,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import SVC
-from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
@@ -145,7 +144,6 @@ def data_understanding(df_eda: pd.DataFrame):
         st.metric("Rasio Duplikasi Data", f"{duplicate_ratio:.2%}")
     
     with col2:
-        st.metric("Penggunaan Memori", f"{df_eda.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
         st.metric("Fitur Numerik", f"{len(df_eda.select_dtypes(include=np.number).columns)}")
         st.metric("Fitur Non-Numerik", f"{len(df_eda.select_dtypes(exclude=np.number).columns)}")
 
@@ -773,11 +771,9 @@ elif selected_tab == "LightGBM":
     st.header(selected_tab)
     
     if 'X_train' not in st.session_state:
-        st.warning("Lakukan Preprocessing Terlebih Dahulu!")
+        st.warning("⚠️ Please complete preprocessing first!")
     else:
-        st.markdown("### Hyperparameter Tuning")
-        
-        # Kolom untuk scaling
+        # Kolom untuk scaling (sama seperti di Colab)
         cols_to_scale = ['Age', 'EducationLevel', 'BMI', 'AlcoholConsumption', 
                         'PhysicalActivity', 'SleepQuality', 'MMSE', 
                         'FunctionalAssessment', 'ADL']
@@ -787,25 +783,28 @@ elif selected_tab == "LightGBM":
         tuning_method = st.tabs(["Tanpa SMOTEENN", "Dengan SMOTEENN"])
         
         # ===================================================================
-        # METODE 1: TANPA SMOTEENN
+        # METODE 1: TANPA SMOTEENN (SAMA SEPERTI COLAB)
         # ===================================================================
         with tuning_method[0]:
+            
             col1, col2 = st.columns(2)
             with col1:
-                n_iter = st.number_input("Jumlah Iterasi", min_value=10, max_value=100, value=20, step=5, key='lgbm_iter1')
+                n_iter = st.number_input("Jumlah Iterasi (n_iter)", min_value=10, max_value=100, value=20, step=5, key='lgbm_iter1')
                 cv_splits = st.number_input("CV Splits", min_value=3, max_value=10, value=5, key='lgbm_cv1')
             with col2:
                 scoring_metric = st.selectbox("Scoring Metric", ['recall', 'f1', 'precision', 'roc_auc'], key='lgbm_scoring1')
                 random_state = st.number_input("Random State", value=42, key='lgbm_rs1')
             
-            if st.button("Tuning Model", key='lgbm_tune1'):
-                with st.spinner("Memuat model..."):
-                    # Pipeline
-                    pipe = Pipeline([
+            if st.button("Mulai tuning", key='lgbm_tune1'):
+                with st.spinner("Sedang memuat model..."):
+                    from sklearn.pipeline import Pipeline
+                    
+                    # Pipeline PERSIS seperti di Colab
+                    pipe_tuned = Pipeline([
                         ('tuned_model', LGBMClassifier(random_state=random_state, is_unbalance=True))
                     ])
                     
-                    # Parameter grid
+                    # Parameter grid PERSIS seperti di Colab
                     param_grid = {
                         'tuned_model__max_depth': [3, 5, 7, 10],
                         'tuned_model__learning_rate': [0.01, 0.05, 0.1, 0.2],
@@ -819,12 +818,12 @@ elif selected_tab == "LightGBM":
                         'tuned_model__boosting_type': ['gbdt', 'dart']
                     }
                     
-                    # Cross-validation
+                    # Cross-validation PERSIS seperti di Colab
                     cv = StratifiedKFold(n_splits=cv_splits, shuffle=True, random_state=random_state)
                     
-                    # Random Search
+                    # Random Search PERSIS seperti di Colab
                     random_search_lgbm = RandomizedSearchCV(
-                        estimator=pipe,
+                        estimator=pipe_tuned,
                         param_distributions=param_grid,
                         n_iter=n_iter,
                         cv=cv,
@@ -834,10 +833,10 @@ elif selected_tab == "LightGBM":
                         n_jobs=-1
                     )
                     
-                    # Fit
+                    # Fit model
                     random_search_lgbm.fit(st.session_state.X_train, st.session_state.y_train)
                     
-                    # Best model
+                    # Ambil model terbaik PERSIS seperti di Colab
                     tuned_lgbm = random_search_lgbm.best_estimator_
                     
                     # Store
@@ -845,13 +844,15 @@ elif selected_tab == "LightGBM":
                     st.session_state.lgbm_best_params = random_search_lgbm.best_params_
                     st.session_state.lgbm_best_score = random_search_lgbm.best_score_
                     
-                    # Predict
+                    # Prediksi pada data train
                     tuned_lgbm_pred_train = tuned_lgbm.predict(st.session_state.X_train)
                     tuned_lgbm_pred_train_probs = tuned_lgbm.predict_proba(st.session_state.X_train)[:, 1]
+                    
+                    # Prediksi pada data test
                     tuned_lgbm_pred_test = tuned_lgbm.predict(st.session_state.X_test)
                     tuned_lgbm_pred_test_probs = tuned_lgbm.predict_proba(st.session_state.X_test)[:, 1]
                     
-                    # Evaluate
+                    # Evaluasi metrik untuk data train
                     tuned_train_lgbm_metrics = {
                         'Precision': precision_score(st.session_state.y_train, tuned_lgbm_pred_train, pos_label=1),
                         'Recall': recall_score(st.session_state.y_train, tuned_lgbm_pred_train, pos_label=1),
@@ -859,6 +860,7 @@ elif selected_tab == "LightGBM":
                         'ROC AUC': roc_auc_score(st.session_state.y_train, tuned_lgbm_pred_train_probs)
                     }
                     
+                    # Evaluasi metrik untuk data test
                     tuned_test_lgbm_metrics = {
                         'Precision': precision_score(st.session_state.y_test, tuned_lgbm_pred_test, pos_label=1),
                         'Recall': recall_score(st.session_state.y_test, tuned_lgbm_pred_test, pos_label=1),
@@ -866,27 +868,23 @@ elif selected_tab == "LightGBM":
                         'ROC AUC': roc_auc_score(st.session_state.y_test, tuned_lgbm_pred_test_probs)
                     }
                     
-                    # DataFrame
+                    # Buat DataFrame evaluasi
                     tuned_lgbm_evaluation_df = pd.DataFrame(
                         [tuned_train_lgbm_metrics, tuned_test_lgbm_metrics], 
                         index=['Train', 'Test']
                     )
                     st.session_state.lgbm_results = tuned_lgbm_evaluation_df
-                    
-                    st.success("LightGBM tuning selesai!")
-            
+
             # Display results
-            if 'lgbm_best_params' in st.session_state:
-                st.markdown("### Hasil Tuning")
-                
-                st.markdown("#### Hyperparameter Terbaik")
+            if 'lgbm_best_params' in st.session_state:   
+                st.markdown("#### Best Hyperparameters")
                 params_df = pd.DataFrame(
                     list(st.session_state.lgbm_best_params.items()),
                     columns=['Parameter', 'Value']
                 )
                 st.dataframe(params_df, use_container_width=True)
                 
-                st.markdown("#### Performa Model")
+                st.markdown("#### Model Performance")
                 st.dataframe(
                     st.session_state.lgbm_results.style.format('{:.4f}')
                     .background_gradient(cmap='YlGn'),
@@ -923,33 +921,34 @@ elif selected_tab == "LightGBM":
                 st.plotly_chart(fig, use_container_width=True)
         
         # ===================================================================
-        # METODE 2: DENGAN SMOTEENN
+        # METODE 2: DENGAN SMOTEENN (PERSIS SEPERTI COLAB)
         # ===================================================================
         with tuning_method[1]:
             col1, col2 = st.columns(2)
             with col1:
-                n_iter_smote = st.number_input("Jumlah Iterasi", min_value=10, max_value=100, value=20, step=5, key='lgbm_iter2')
+                n_iter_smote = st.number_input("Jumlah Iterasi (n_iter)", min_value=10, max_value=100, value=20, step=5, key='lgbm_iter2')
                 cv_splits_smote = st.number_input("CV Splits", min_value=3, max_value=10, value=5, key='lgbm_cv2')
             with col2:
                 scoring_metric_smote = st.selectbox("Scoring Metric", ['recall', 'f1', 'precision', 'roc_auc'], key='lgbm_scoring2')
                 random_state_smote = st.number_input("Random State", value=42, key='lgbm_rs2')
             
-            if st.button("Tuning dengan SMOTEENN", key='lgbm_tune2'):
-                with st.spinner("Memuat Model"):
+            if st.button("Mulai tuning", key='lgbm_tune2'):
+                with st.spinner("Memuat model..."):
+                    # PENTING: Import dari imblearn.pipeline
+                    from imblearn.pipeline import Pipeline
                     from imblearn.combine import SMOTEENN
                     
-                    # Pipeline
-                    pipe = Pipeline([
+                    # Pipeline PERSIS seperti di Colab
+                    pipe_imb = Pipeline([
                         ('scaler', ColumnTransformer([
                             ('scale', MinMaxScaler(), cols_to_scale)
                         ], remainder='passthrough')),
-                        ('sampling', None),
+                        ('sampling', SMOTEENN(random_state=random_state_smote)),
                         ('model', LGBMClassifier(random_state=random_state_smote))
                     ])
                     
-                    # Parameter grid
+                    # Parameter grid PERSIS seperti di Colab
                     param_grid = {
-                        'sampling': [None, SMOTEENN(random_state=random_state_smote)],
                         'model__max_depth': [3, 5, 7, 10],
                         'model__learning_rate': [0.01, 0.05, 0.1, 0.2],
                         'model__n_estimators': [100, 200, 300, 495],
@@ -960,12 +959,12 @@ elif selected_tab == "LightGBM":
                         'model__num_leaves': [15, 31, 63]
                     }
                     
-                    # Cross-validation
+                    # Cross-validation PERSIS seperti di Colab
                     cv = StratifiedKFold(n_splits=cv_splits_smote, shuffle=True, random_state=random_state_smote)
                     
-                    # Random Search
+                    # Random Search PERSIS seperti di Colab
                     random_search = RandomizedSearchCV(
-                        estimator=pipe,
+                        estimator=pipe_imb,
                         param_distributions=param_grid,
                         n_iter=n_iter_smote,
                         cv=cv,
@@ -974,10 +973,10 @@ elif selected_tab == "LightGBM":
                         n_jobs=-1
                     )
                     
-                    # Fit
+                    # Fit model
                     random_search.fit(st.session_state.X_train, st.session_state.y_train)
                     
-                    # Best model
+                    # Retrieve model PERSIS seperti di Colab
                     tuned_model_lgbm_imb = random_search.best_estimator_
                     
                     # Store
@@ -985,13 +984,13 @@ elif selected_tab == "LightGBM":
                     st.session_state.lgbm_smote_best_params = random_search.best_params_
                     st.session_state.lgbm_smote_best_score = random_search.best_score_
                     
-                    # Predict
+                    # Predict PERSIS seperti di Colab
                     pred_lgbm_imb_train = tuned_model_lgbm_imb.predict(st.session_state.X_train)
                     pred_lgbm_imb_train_probs = tuned_model_lgbm_imb.predict_proba(st.session_state.X_train)[:, 1]
                     pred_lgbm_imb_test = tuned_model_lgbm_imb.predict(st.session_state.X_test)
                     pred_lgbm_imb_test_probs = tuned_model_lgbm_imb.predict_proba(st.session_state.X_test)[:, 1]
                     
-                    # Evaluate
+                    # Evaluate PERSIS seperti di Colab
                     lgbm_imb_train_metrics = {
                         'Precision': precision_score(st.session_state.y_train, pred_lgbm_imb_train),
                         'Recall': recall_score(st.session_state.y_train, pred_lgbm_imb_train),
@@ -1006,25 +1005,23 @@ elif selected_tab == "LightGBM":
                         'ROC AUC': roc_auc_score(st.session_state.y_test, pred_lgbm_imb_test_probs)
                     }
                     
-                    # DataFrame
-                    tuned_lgbm_smote_evaluation_df = pd.DataFrame(
+                    # DataFrame hasil evaluasi PERSIS seperti di Colab
+                    tuned_lgbm_evaluation_df = pd.DataFrame(
                         [lgbm_imb_train_metrics, lgbm_imb_test_metrics], 
                         index=['Train', 'Test']
                     )
-                    st.session_state.lgbm_smote_results = tuned_lgbm_smote_evaluation_df
-                    
-                    st.success("LightGBM tuning dengan SMOTEENN selesai!")
+                    st.session_state.lgbm_smote_results = tuned_lgbm_evaluation_df
             
             # Display results
-            if 'lgbm_smote_best_params' in st.session_state:
-                st.markdown("#### Hyperparameter Terbaik")
+            if 'lgbm_smote_best_params' in st.session_state:                
+                st.markdown("#### Best Hyperparameters")
                 params_df = pd.DataFrame(
                     list(st.session_state.lgbm_smote_best_params.items()),
                     columns=['Parameter', 'Value']
                 )
                 st.dataframe(params_df, use_container_width=True)
                 
-                st.markdown("#### Performa Model")
+                st.markdown("#### Model Performance")
                 st.dataframe(
                     st.session_state.lgbm_smote_results.style.format('{:.4f}')
                     .background_gradient(cmap='YlGn'),
@@ -1052,7 +1049,7 @@ elif selected_tab == "LightGBM":
                 ))
                 
                 fig.update_layout(
-                    title="Performa LightGBM dengan SMOTEENN  (Train vs Test)",
+                    title="LightGBM + SMOTEENN Performance (Train vs Test)",
                     xaxis_title="Metrics",
                     yaxis_title="Score",
                     barmode='group',
@@ -1104,26 +1101,26 @@ elif selected_tab == "Evaluasi Model":
                 )
                 
                 # Visualization
-                fig = go.Figure()
+                # fig = go.Figure()
                 
-                for idx, row_name in enumerate(lgbm_indices):
-                    if 'Test' in row_name:
-                        fig.add_trace(go.Bar(
-                            name=row_name,
-                            x=list(evaluation_df_lgbm.columns),
-                            y=evaluation_df_lgbm.loc[row_name],
-                            text=[f"{val:.3f}" for val in evaluation_df_lgbm.loc[row_name]],
-                            textposition='auto'
-                        ))
+                # for idx, row_name in enumerate(lgbm_indices):
+                #     if 'Test' in row_name:
+                #         fig.add_trace(go.Bar(
+                #             name=row_name,
+                #             x=list(evaluation_df_lgbm.columns),
+                #             y=evaluation_df_lgbm.loc[row_name],
+                #             text=[f"{val:.3f}" for val in evaluation_df_lgbm.loc[row_name]],
+                #             textposition='auto'
+                #         ))
                 
-                fig.update_layout(
-                    title="Perbandingan Performa LightGBM (Test Set)",
-                    xaxis_title="Metrics",
-                    yaxis_title="Score",
-                    barmode='group',
-                    height=500
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                # fig.update_layout(
+                #     title="Perbandingan Performa LightGBM (Test Set)",
+                #     xaxis_title="Metrics",
+                #     yaxis_title="Score",
+                #     barmode='group',
+                #     height=500
+                # )
+                # st.plotly_chart(fig, use_container_width=True)
                 
                 # ===================================================================
                 # CONFUSION MATRIX LIGHTGBM
@@ -1179,48 +1176,7 @@ elif selected_tab == "Evaluasi Model":
                             height=400
                         )
                         st.plotly_chart(fig_cm_smote, use_container_width=True)
-                
-                # ===================================================================
-                # ROC CURVE LIGHTGBM
-                # ===================================================================
-                st.markdown("### ROC Curve")
-                
-                if 'tuned_lgbm_smote' in st.session_state:
-                    pred_lgbm_imb_test_probs = st.session_state.tuned_lgbm_smote.predict_proba(st.session_state.X_test)[:, 1]
-                    
-                    lgbm_fpr, lgbm_tpr, lgbm_thresholds = roc_curve(st.session_state.y_test, pred_lgbm_imb_test_probs)
-                    lgbm_roc_auc = roc_auc_score(st.session_state.y_test, pred_lgbm_imb_test_probs)
-                    
-                    fig_roc_lgbm = go.Figure()
-                    
-                    fig_roc_lgbm.add_trace(go.Scatter(
-                        x=lgbm_fpr,
-                        y=lgbm_tpr,
-                        mode='lines',
-                        name=f'LightGBM (AUC = {lgbm_roc_auc:.6f})',
-                        line=dict(color='green', width=2)
-                    ))
-                    
-                    fig_roc_lgbm.add_trace(go.Scatter(
-                        x=[0, 1],
-                        y=[0, 1],
-                        mode='lines',
-                        name='Random Classifier',
-                        line=dict(color='red', dash='dash')
-                    ))
-                    
-                    fig_roc_lgbm.update_layout(
-                        title='ROC Curve - Tuned LightGBM + SMOTEENN',
-                        xaxis_title='False Positive Rate',
-                        yaxis_title='True Positive Rate',
-                        height=500,
-                        showlegend=True
-                    )
-                    
-                    st.plotly_chart(fig_roc_lgbm, use_container_width=True)
-        
-        st.markdown("---")
-        
+
         st.markdown("---")
         st.markdown("## Perbandingan Model Terbaik")
         
@@ -1285,56 +1241,46 @@ elif selected_tab == "Evaluasi Model":
             - ROC AUC: {comparison_df.loc[best_f1_idx, 'ROC AUC']:.4f}
             """)
 
+
+
 elif selected_tab == "Fitur Penting":
     st.header(selected_tab)
     
-    # Cek apakah model LightGBM + SMOTEENN sudah di-tune
-    if 'tuned_lgbm_smote' not in st.session_state:
-        st.warning("⚠️ Model LightGBM + SMOTEENN belum di-tune. Silakan lakukan tuning terlebih dahulu di tab 'LightGBM'!")
+    # Cek apakah model LightGBM (Tanpa SMOTEENN) sudah di-tune
+    if 'tuned_lgbm' not in st.session_state:
+        st.warning("⚠️ Model LightGBM belum di-tune. Silakan lakukan tuning terlebih dahulu di tab 'LightGBM'!")
     else:
         try:
             # Get model yang sudah di-train
-            selected_model = st.session_state.tuned_lgbm_smote
+            selected_model = st.session_state.tuned_lgbm
             feature_names = st.session_state.X_train.columns
             
-            # Get feature importance langsung dari model yang sudah di-train
-            # Model sudah di-fit saat tuning, jadi bisa langsung ambil feature_importances_
+            # Get feature importance dari model yang sudah di-train
             importances = None
             
-            if hasattr(selected_model, 'feature_importances_'):
-                # Jika model punya feature_importances_ langsung
+            # Cek apakah model adalah pipeline
+            if hasattr(selected_model, 'named_steps'):
+                # Model dalam pipeline - ambil dari step 'tuned_model'
+                if 'tuned_model' in selected_model.named_steps:
+                    model_step = selected_model.named_steps['tuned_model']
+                    if hasattr(model_step, 'feature_importances_'):
+                        importances = model_step.feature_importances_
+            elif hasattr(selected_model, 'feature_importances_'):
+                # Model langsung (bukan pipeline)
                 importances = selected_model.feature_importances_
-                st.success("Feature importance berhasil diambil dari model LightGBM + SMOTEENN")
-            elif hasattr(selected_model, 'named_steps') and 'model' in selected_model.named_steps:
-                # Jika model ada dalam pipeline, ambil dari step 'model'
-                model_step = selected_model.named_steps['model']
-                if hasattr(model_step, 'feature_importances_'):
-                    importances = model_step.feature_importances_
-                    st.success("Feature importance berhasil diambil dari model LightGBM + SMOTEENN")
-                else:
-                    st.error("❌ Model dalam pipeline tidak memiliki feature_importances_")
-                    importances = None
-            else:
-                st.error("❌ Model tidak memiliki feature_importances_")
-                if hasattr(selected_model, 'named_steps'):
-                    st.write("Available steps:", list(selected_model.named_steps.keys()))
-                importances = None
+                st.success("Feature importance berhasil diambil dari model LightGBM")
             
             if importances is None:
                 st.error("❌ Tidak dapat mengambil feature importance dari model")
             else:
-                # Pastikan jumlah importances sama dengan jumlah features
-                if len(importances) != len(feature_names):
-                    st.warning(f"⚠️ Mismatch: {len(importances)} importances vs {len(feature_names)} features")
-                
                 # Create DataFrame
                 fi_df = pd.DataFrame({
-                    'Feature': feature_names,
+                    'Feature': feature_names[:len(importances)],
                     'Importance': importances
                 }).sort_values('Importance', ascending=False)
                 
                 # Display top N
-                top_n = st.slider("Jumlah Top Features", 5, len(fi_df), min(15, len(fi_df)), key='fi_topn')
+                top_n = st.slider("Jumlah Feature Importance", 5, len(fi_df), min(15, len(fi_df)), key='fi_topn')
                 
                 fi_top = fi_df.head(top_n)
                 
@@ -1376,7 +1322,6 @@ elif selected_tab == "Fitur Penting":
                 ))
                 
                 fig.update_layout(
-                    title=f"Top {top_n} Feature Importance - LightGBM + SMOTEENN",
                     xaxis_title="Importance Score",
                     yaxis_title="Feature",
                     height=max(500, top_n * 30),
@@ -1388,16 +1333,8 @@ elif selected_tab == "Fitur Penting":
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
             import traceback
-            with st.expander("🔍 Show Error Details"):
-                st.code(traceback.format_exc())
-                
-                # Debug info
-                st.markdown("**Debug Information:**")
-                st.write("- Model type:", type(st.session_state.tuned_lgbm_smote))
-                st.write("- Has feature_importances_:", hasattr(st.session_state.tuned_lgbm_smote, 'feature_importances_'))
-                st.write("- Has named_steps:", hasattr(st.session_state.tuned_lgbm_smote, 'named_steps'))
-                if hasattr(st.session_state.tuned_lgbm_smote, 'named_steps'):
-                    st.write("- Pipeline steps:", list(st.session_state.tuned_lgbm_smote.named_steps.keys()))
+            st.code(traceback.format_exc())
+
 elif selected_tab == "Kesimpulan & Rekomendasi":
     st.header(selected_tab)
     
@@ -1413,11 +1350,10 @@ elif selected_tab == "Kesimpulan & Rekomendasi":
                 border-left: 5px solid #3b82f6;
                 margin-bottom: 20px;">
         <p style="font-size: 16px; line-height: 1.8; color: #1e40af; text-align: justify;">
-        Model <strong>LightGBM + SMOTEENN</strong> menjadi pilihan terbaik dalam memprediksi diagnosis Alzheimer 
-        karena menunjukkan performa lebih baik di semua metrik evaluasi. Dilihat dari performa 
-        <strong>ROC AUC sebesar 94.7%</strong> dapat membedakan pasien Alzheimer dan Non-AD. 
-        Selain itu, kemampuan deteksi pasien tersebut terkena Alzheimer yang tinggi yaitu sebesar 
-        <strong>92.5%</strong> dan presisi diagnosis yang sangat tinggi yaitu <strong>94.2%</strong>.
+        Model <strong>LightGBM Hyperparameter Tuning tanpa SMOTEENN </strong> menjadi pilihan terbaik dalam memprediksi diagnosis Alzheimer 
+        karena menunjukkan performa sebagian besar lebih baik di beberapa metrik evaluasi. Dilihat dari performa 
+        F-1 Score sebesar 98% menunjukkan keseimbangan performa model lebih baik dibandingan LightGBM + SMOTEEN. Recall sebesar 92% sedikit lebih rendah dibandingkan LightGBM + SMOTEENN dalam memprediksi pasien tersebut mengalami Alzheimer. Namun dalam hal presicion, Light GBM Tuned lebih baik yaitu 86% dalam memprediksi pasien tersebut benar-benar mengalami Alzheimer 
+        Selain itu, model dapat membedakan pasien Alzheimer dan Non-AD sebesar 94% berdasarkan metrik ROC-AUC.
         </p>
     </div>
     """, unsafe_allow_html=True)
